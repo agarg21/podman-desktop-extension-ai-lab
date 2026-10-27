@@ -131,6 +131,26 @@ AI_JSON.recipes.forEach(recipe => {
 // They break out of guiderails and fail the tests.
 const PLAYGROUND_TEST_MODELS: string[] = ['ibm-granite/granite-4.0-micro-GGUF'];
 
+// Optional CI sharding of the smoke run (unset = run everything).
+// AI_LAB_E2E_SHARD_APPS is a '|'-separated list of recipe app names. With AI_LAB_E2E_SHARD_ROLE=apps only those apps
+// run (no playground or Llama Stack tests); with AI_LAB_E2E_SHARD_ROLE=rest everything except those apps runs.
+const E2E_SHARD_APPS: string[] = (process.env.AI_LAB_E2E_SHARD_APPS ?? '').split('|').filter(name => name.length > 0);
+const E2E_SHARD_ROLE: string = process.env.AI_LAB_E2E_SHARD_ROLE ?? '';
+const E2E_ONLY_SHARD_APPS: boolean = E2E_SHARD_ROLE === 'apps';
+function runAppInThisShard(appName: string): boolean {
+  if (E2E_SHARD_ROLE === 'apps') return E2E_SHARD_APPS.includes(appName);
+  if (E2E_SHARD_ROLE === 'rest') return !E2E_SHARD_APPS.includes(appName);
+  return true;
+}
+for (const [appModel, appNames] of AI_APP_MODEL_AND_NAMES) {
+  const shardAppNames = appNames.filter(runAppInThisShard);
+  if (shardAppNames.length === 0 && (E2E_ONLY_SHARD_APPS || !PLAYGROUND_TEST_MODELS.includes(appModel))) {
+    AI_APP_MODEL_AND_NAMES.delete(appModel);
+  } else {
+    AI_APP_MODEL_AND_NAMES.set(appModel, shardAppNames);
+  }
+}
+
 const AI_APP_HTTP_TEST_APP_NAMES: string[] = ['Object Detection'];
 const AI_APP_SERVICE_RESPONSE_TEST_APP_NAMES: string[] = ['Audio to Text', 'Function calling'];
 
@@ -384,7 +404,7 @@ test.describe.serial(`AI Lab extension installation and verification`, () => {
       /*
        * Playground tests
        */
-      if (PLAYGROUND_TEST_MODELS.includes(appModel)) {
+      if (PLAYGROUND_TEST_MODELS.includes(appModel) && !E2E_ONLY_SHARD_APPS) {
         test.describe.serial(`Run Playground tests for ${appModel}`, () => {
           test(`Create AI Lab playground for ${appModel}`, async () => {
             test.setTimeout(310_000);
@@ -602,6 +622,8 @@ test.describe.serial(`AI Lab extension installation and verification`, () => {
   test.describe.serial(`Start Llama Stack from sidebar and verify containers`, { tag: '@smoke' }, () => {
     // eslint-disable-next-line sonarjs/no-skipped-tests
     test.skip(!!isCI && !!isWindows, 'Skipping Llama Stack tests on GitHub Actions with Windows platform');
+    // eslint-disable-next-line sonarjs/no-skipped-tests
+    test.skip(E2E_ONLY_SHARD_APPS, 'Llama Stack tests run in the other e2e shard');
     let llamaStackPage: AiLlamaStackPage;
     const llamaStackContainerNames: string[] = [];
 

@@ -23,8 +23,16 @@ jobs:
   e2e-pr-check:
     name: e2e tests smoke
     runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # The recipe apps are independent, so the smoke run is split in two jobs of similar length:
+        # 'apps' runs only the apps listed in AI_LAB_E2E_SHARD_APPS, 'rest' runs everything else.
+        shard-role: [rest, apps]
     env:
       SKIP_INSTALLATION: true
+      AI_LAB_E2E_SHARD_ROLE: ${{ matrix.shard-role }}
+      AI_LAB_E2E_SHARD_APPS: 'Node.js based ChatBot|Node.js Function calling|Object Detection'
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -113,7 +121,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-pr-check
+          name: e2e-pr-check-${{ matrix.shard-role }}
           path: |
             ./**/tests/**/output/
             !./**/*.gguf
@@ -125,12 +133,12 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-pr-check-videos
+          name: e2e-pr-check-videos-${{ matrix.shard-role }}
           path: ./**/output/videos/*
 
       - name: Upload test traces
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-pr-check-traces
+          name: e2e-pr-check-traces-${{ matrix.shard-role }}
           path: ./**/output/traces/*
